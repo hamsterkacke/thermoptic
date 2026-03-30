@@ -1,10 +1,8 @@
 import { createServer } from 'node:http';
 import { request as http_request } from 'node:http';
 import { request as https_request } from 'node:https';
-import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import * as logger from './logger.js';
-import * as requestengine from './requestengine.js';
 
 function parse_truthy_or_falsy(value) {
     if (typeof value === 'undefined' || value === null) {
@@ -256,26 +254,47 @@ function decode_response_body(body) {
 }
 
 async function perform_health_probe(config, state) {
-    const probe_logger = logger.get_request_logger({ request_id: `health-${randomUUID()}` });
-    const { target_url, target_url_object } = config;
+    const { target_url_object } = config;
 
-    const protocol = target_url_object.protocol.replace(':', '');
-    const path = `${target_url_object.pathname}${target_url_object.search || ''}`;
-
+    const request_module = select_http_module(config.target_url);
     const started_at = Date.now();
-    const response = await requestengine.process_request(
-        probe_logger,
-        target_url,
-        protocol,
-        'GET',
-        path,
-        config.probe_headers,
-        null
-    );
+
+    const response = await new Promise((resolve, reject) => {
+        const req = request_module({
+            host: target_url_object.hostname,
+            port: target_url_object.port ? parseInt(target_url_object.port, 10) : (target_url_object.protocol === 'https:' ? 443 : 80),
+            path: `${target_url_object.pathname}${target_url_object.search || ''}`,
+            method: 'GET',
+            timeout: 10000,
+            headers: {
+                'Host': `${target_url_object.hostname}:${target_url_object.port || ''}`,
+                'Accept': 'text/plain'
+            }
+        }, (res) => {
+            const chunks = [];
+            res.on('data', (chunk) => chunks.push(chunk));
+            res.on('end', () => {
+                resolve({
+                    statusCode: res.statusCode,
+                    body: Buffer.concat(chunks).toString('utf8')
+                });
+            });
+        });
+
+        req.on('timeout', () => {
+            req.destroy(new Error('Health probe request timed out'));
+        });
+
+        req.on('error', (err) => {
+            reject(err);
+        });
+
+        req.end();
+    });
 
     const duration_ms = Date.now() - started_at;
-    const status_code = response && typeof response.statusCode === 'number' ? response.statusCode : null;
-    const body_text = decode_response_body(response && response.body);
+    const status_code = response.statusCode;
+    const body_text = response.body;
 
     const status_match = status_code === config.expected_status;
     const body_match = body_text.trim() === config.expected_body.trim();
