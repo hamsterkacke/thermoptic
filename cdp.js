@@ -546,18 +546,11 @@ async function close_target_via_http(target_id) {
             }
 
             if (res.statusCode >= 200 && res.statusCode < 300) {
-                cdp_logger.info('HTTP closeTarget succeeded.', {
-                    target_id: target_id,
-                    status_code: res.statusCode
-                });
                 resolve({ success: true });
                 return;
             }
 
             if (res.statusCode === 404) {
-                cdp_logger.info('HTTP closeTarget returned 404; treating as already closed.', {
-                    target_id: target_id
-                });
                 resolve({ success: true });
                 return;
             }
@@ -582,7 +575,6 @@ async function close_target_via_http(target_id) {
 
 async function perform_tab_closure(tab_info, reason) {
     const target_id = tab_info.target_id;
-    cdp_logger.info('perform_tab_closure called.', { target_id, reason });
     let target_closed = false;
 
     if (tab_info.browser && tab_info.browser.Target && typeof tab_info.browser.Target.closeTarget === 'function') {
