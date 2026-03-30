@@ -582,6 +582,7 @@ async function close_target_via_http(target_id) {
 
 async function perform_tab_closure(tab_info, reason) {
     const target_id = tab_info.target_id;
+    cdp_logger.info('perform_tab_closure called.', { target_id, reason });
     let target_closed = false;
 
     if (tab_info.browser && tab_info.browser.Target && typeof tab_info.browser.Target.closeTarget === 'function') {
