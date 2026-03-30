@@ -32,6 +32,7 @@ const cdp_logger = logger.get_logger();
 
 const TAB_CLOSURE_TIMEOUT_MS = 15000;
 const TAB_CLOSURE_STALE_THRESHOLD_MS = 30000;
+const TAB_CLOSURE_MAX_RETRIES = 5;
 
 ensure_unexpected_response_logging();
 
@@ -534,7 +535,8 @@ async function close_target_via_http(target_id) {
             port: port,
             path: `/json/close/${target_id}`,
             method: 'GET',
-            timeout: 3000
+            timeout: 3000,
+            headers: { 'Host': `localhost:${port}` }
         }, (res) => {
             res.resume();
 
@@ -618,7 +620,9 @@ async function perform_tab_closure(tab_info, reason) {
         target_closed = target_closed || fresh_result.success;
     }
 
-    if (!target_closed) {
+    // Always attempt HTTP close. Target.closeTarget via CDP WebSocket can
+    // return success without actually destroying the target in Chrome.
+    {
         const http_result = await close_target_via_http(target_id);
         if (!http_result.success && http_result.error && !is_target_already_closed_error(http_result.error)) {
             cdp_logger.error('HTTP closeTarget failed.', {
@@ -707,6 +711,18 @@ async function release_tracked_tab(tab_info, reason) {
         }
 
         tab_info.retry_count = (tab_info.retry_count || 0) + 1;
+
+        if (tab_info.retry_count >= TAB_CLOSURE_MAX_RETRIES) {
+            cdp_logger.error('Tab closure retries exhausted; abandoning tab.', {
+                target_id: tab_info.target_id,
+                retry_count: tab_info.retry_count,
+                reason: reason
+            });
+            open_tabs.delete(tab_info.target_id);
+            maybe_stop_tab_reaper();
+            return;
+        }
+
         tab_info.closing = false;
         tab_info.closing_since = null;
         attach_disconnect_handler(tab_info);
