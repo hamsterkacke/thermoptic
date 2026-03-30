@@ -630,6 +630,11 @@ async function perform_tab_closure(tab_info, reason) {
 
     // Always attempt HTTP close. Target.closeTarget via CDP WebSocket can
     // return success without actually destroying the target in Chrome.
+    // Brief delay lets Chrome finish processing the CDP close before we
+    // hit the HTTP endpoint, avoiding a race between the two mechanisms.
+    if (target_closed) {
+        await utils.wait(150);
+    }
     {
         const http_result = await close_target_via_http(target_id);
         if (!http_result.success && http_result.error && !is_target_already_closed_error(http_result.error)) {
