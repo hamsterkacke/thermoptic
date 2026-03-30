@@ -536,7 +536,7 @@ async function close_target_via_http(target_id) {
             path: `/json/close/${target_id}`,
             method: 'GET',
             timeout: 3000,
-            headers: { 'Host': `localhost:${port}` }
+            headers: { 'Host': 'localhost' }
         }, (res) => {
             res.resume();
 
@@ -546,11 +546,18 @@ async function close_target_via_http(target_id) {
             }
 
             if (res.statusCode >= 200 && res.statusCode < 300) {
+                cdp_logger.info('HTTP closeTarget succeeded.', {
+                    target_id: target_id,
+                    status_code: res.statusCode
+                });
                 resolve({ success: true });
                 return;
             }
 
             if (res.statusCode === 404) {
+                cdp_logger.info('HTTP closeTarget returned 404; treating as already closed.', {
+                    target_id: target_id
+                });
                 resolve({ success: true });
                 return;
             }
